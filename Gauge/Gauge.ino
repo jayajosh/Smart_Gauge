@@ -11,6 +11,9 @@
 #include "BLE_App_Driver.h"
 #include "ui.h"
 
+#define LED_R 10
+#define LED_G 11
+#define LED_B 12
 
 enum SpeedoStyle { Cat = 0, Fire = 1, Hypersport = 2};
 
@@ -141,6 +144,17 @@ void setup()
   //SD_Init();                                      // It must be initialized after the LCD, and if the LCD is reinitialized later, the SD also needs to be reinitialized
   Lvgl_Init();
 
+  pinMode(LED_R, OUTPUT);
+  pinMode(LED_G, OUTPUT);
+  pinMode(LED_B, OUTPUT);
+
+  void setLed(bool r, bool g, bool b)
+  {
+    digitalWrite(LED_R, r);
+    digitalWrite(LED_G, g);
+    digitalWrite(LED_B, b);
+  }
+
   ui_init();
 
   lv_obj_add_event_cb(ui_SpeedometerScreen, screen_gesture_cb, LV_EVENT_GESTURE, NULL);
@@ -156,6 +170,11 @@ void setup()
 
 void loop()
 {
+    if (App_DeviceConnected) {
+    setLed(false, false, true); // blue
+  } else {
+    setLed(true, false, false); // red
+  }
   if (App_SettingsUpdated) {
       App_SettingsUpdated = false;
 
