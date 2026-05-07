@@ -11,16 +11,13 @@
 #include "BLE_App_Driver.h"
 #include "ui.h"
 
-#define LED_R 10
-#define LED_G 11
-#define LED_B 12
-
 enum SpeedoStyle { Cat = 0, Fire = 1, Hypersport = 2};
 
 SpeedoStyle backgroundStyle = Cat;
 SpeedoStyle measureStyle = Cat;
 SpeedoStyle needleStyle = Cat;
 
+lv_obj_t * bleStatusSquare;
 
 const void* backgroundImages[] = {
     &ui_img_cat_background2x_png,
@@ -47,7 +44,7 @@ void Driver_Loop(void *parameter)
 
     GPS_Loop();
 
-    vTaskDelay(pdMS_TO_TICKS(100));
+    vTaskDelay(pdMS_TO_TICKS(10));
   }
 }
 void Driver_Init()
@@ -55,8 +52,8 @@ void Driver_Init()
   //Flash_test();
   //BAT_Init();
   I2C_Init();
-  //TCA9554PWR_Init(0x00);   
-  //Set_EXIO(EXIO_PIN8,Low);
+  TCA9554PWR_Init(0x00);   
+  Set_EXIO(EXIO_PIN8,Low);
   //PCF85063_Init();
   //QMI8658_Init(); 
   
@@ -82,41 +79,45 @@ void updateSpeedometerScreenGraphics()
     lv_img_set_src(ui_Needle, needleImages[needleStyle]);
 }
 
+float getStableSpeed(float rawMph)
+{
+    static float smoothedSpeed = 0.0f;
+
+    if (rawMph < 1.5f) {
+        rawMph = 0.0f;
+    }
+
+    smoothedSpeed = (smoothedSpeed * 0.6f) + (rawMph * 0.4f);
+
+    if (smoothedSpeed < 1.0f) {
+        smoothedSpeed = 0.0f;
+    }
+
+    return smoothedSpeed;
+}
+
 void updateSpeedDisplay()
 {
     static uint32_t lastUpdate = 0;
     static uint32_t tick = 0;
 
-    if (millis() - lastUpdate < 200) return;
+    if (millis() - lastUpdate < 50) return;
     lastUpdate = millis();
     tick++;
 
     char speedStr[32];
 
     if(GPS_Fix) {
-        snprintf(speedStr, sizeof(speedStr), "%.1f", GPS_Speed_MPH);
+        float stableSpeed = getStableSpeed(GPS_Speed_MPH);
+        snprintf(speedStr, sizeof(speedStr), "%.0f", stableSpeed);
+
+        int angle = 0 + (int)(stableSpeed * 18);
+        lv_img_set_angle(ui_Needle, angle);
     } else {
         snprintf(speedStr, sizeof(speedStr), "GPS Unavailable");
     }
 
     lv_label_set_text(ui_SpeedLabel, speedStr);
-
-    // static uint32_t lastUpdate = 0;
-
-    // if(millis() - lastUpdate < 100) return;
-    // lastUpdate = millis();
-
-    // char speedStr[16];
-
-    // if(GPS_Fix) {
-    //     snprintf(speedStr, sizeof(speedStr), "%.1f", GPS_Speed_MPH);
-    //     lv_label_set_text(ui_SpeedLabel, speedStr);
-
-    //     int angle = 2300 + (int)(GPS_Speed_MPH * 10); // placeholder mapping
-    //     lv_img_set_angle(ui_Needle, angle);
-    // } else {
-    //     lv_label_set_text(ui_SpeedLabel, "--");
-    // }
 }
 
 static void screen_gesture_cb(lv_event_t * e)
@@ -136,6 +137,45 @@ static void screen_gesture_cb(lv_event_t * e)
     }
 }
 
+void createBleStatusSquare()
+{
+  bleStatusSquare = lv_obj_create(ui_SpeedometerScreen);
+
+  lv_obj_set_size(bleStatusSquare, 16, 16);
+
+  // Lower-right area, but still inside the round screen
+  lv_obj_align(bleStatusSquare, LV_ALIGN_CENTER, 125, 125);
+
+  lv_obj_clear_flag(bleStatusSquare, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_set_style_radius(bleStatusSquare, 3, LV_PART_MAIN);
+  lv_obj_set_style_border_width(bleStatusSquare, 0, LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(bleStatusSquare, LV_OPA_COVER, LV_PART_MAIN);
+  lv_obj_set_style_bg_color(bleStatusSquare, lv_color_hex(0xFF0000), LV_PART_MAIN);
+
+  lv_obj_move_foreground(bleStatusSquare);
+}
+
+void updateBleStatusSquare()
+{
+  if (bleStatusSquare == NULL) return;
+
+  static int lastState = -1;
+  int currentState = App_DeviceConnected ? 1 : 0;
+
+  if (currentState == lastState) return;
+  lastState = currentState;
+
+  lv_obj_set_style_bg_color(
+    bleStatusSquare,
+    App_DeviceConnected ? lv_color_hex(0x007BFF) : lv_color_hex(0xFF0000),
+    LV_PART_MAIN
+  );
+
+  lv_obj_move_foreground(bleStatusSquare);
+}
+
+
 void setup()
 {
   //Wireless_Test2();
@@ -144,21 +184,12 @@ void setup()
   //SD_Init();                                      // It must be initialized after the LCD, and if the LCD is reinitialized later, the SD also needs to be reinitialized
   Lvgl_Init();
 
-  pinMode(LED_R, OUTPUT);
-  pinMode(LED_G, OUTPUT);
-  pinMode(LED_B, OUTPUT);
-
-  void setLed(bool r, bool g, bool b)
-  {
-    digitalWrite(LED_R, r);
-    digitalWrite(LED_G, g);
-    digitalWrite(LED_B, b);
-  }
-
   ui_init();
 
   lv_obj_add_event_cb(ui_SpeedometerScreen, screen_gesture_cb, LV_EVENT_GESTURE, NULL);
   lv_obj_add_event_cb(ui_Screen2, screen_gesture_cb, LV_EVENT_GESTURE, NULL);
+
+  createBleStatusSquare();
   // lv_demo_widgets();               
   // lv_demo_benchmark();          
   // lv_demo_keypad_encoder();     
@@ -170,11 +201,7 @@ void setup()
 
 void loop()
 {
-    if (App_DeviceConnected) {
-    setLed(false, false, true); // blue
-  } else {
-    setLed(true, false, false); // red
-  }
+  updateBleStatusSquare();
   if (App_SettingsUpdated) {
       App_SettingsUpdated = false;
 

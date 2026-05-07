@@ -13,39 +13,53 @@ bool GPS_Fix = false;
 
 static String nmeaLine = "";
 
+const uint8_t UBX_SET_RATE_10HZ[] = {
+    0xB5, 0x62,
+    0x06, 0x08,
+    0x06, 0x00,
+    0x64, 0x00, // 100ms = 10Hz
+    0x01, 0x00,
+    0x01, 0x00,
+    0x7A, 0x12
+};
+
+
 void GPS_Init(void)
 {
     GPS.begin(GPS_BAUD, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
+    delay(200);
+
+    GPS.write(UBX_SET_RATE_10HZ, sizeof(UBX_SET_RATE_10HZ));
 }
 
-static void parseRMC(String line)
+static void parseRMC(const String& line)
 {
-    // Example: $GNRMC,...
-    int field = 0;
-    String parts[12];
+    String parts[20];
+    int partIndex = 0;
+    int start = 0;
 
-    for (int i = 0; i < line.length(); i++) {
-        if (line[i] == ',' || i == line.length() - 1) {
-            parts[field++] = line.substring(0, i);
-            line = line.substring(i + 1);
-            i = 0;
+    for (int i = 0; i <= line.length(); i++) {
+        if (i == line.length() || line[i] == ',') {
+            parts[partIndex++] = line.substring(start, i);
+            start = i + 1;
+            if (partIndex >= 20) break;
         }
     }
 
-    // RMC format:
-    // [2] = A/V (valid)
-    // [7] = speed in knots
+    // RMC:
+    // parts[2] = A/V valid status
+    // parts[7] = speed in knots
 
-    if (parts[2] == "A") {
+    if (partIndex > 7 && parts[2] == "A") {
         GPS_Fix = true;
 
         float knots = parts[7].toFloat();
-        GPS_Speed_KMH = knots * 1.852;
-        GPS_Speed_MPH = knots * 1.15078;
+        GPS_Speed_KMH = knots * 1.852f;
+        GPS_Speed_MPH = knots * 1.15078f;
     } else {
         GPS_Fix = false;
-        GPS_Speed_KMH = 0;
-        GPS_Speed_MPH = 0;
+        GPS_Speed_KMH = 0.0f;
+        GPS_Speed_MPH = 0.0f;
     }
 }
 

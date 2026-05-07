@@ -13,27 +13,20 @@ volatile int App_NeedleStyle = 0;
 volatile bool App_SettingsUpdated = false;
 volatile bool App_DeviceConnected = false;
 
-bool deviceConnected = false;
-
 class ServerCallbacks : public BLEServerCallbacks {
   void onConnect(BLEServer* server) override {
-    deviceConnected = true;
+    App_DeviceConnected = true;
     Serial.println("Phone connected");
   }
 
   void onDisconnect(BLEServer* server) override {
-    deviceConnected = false;
+    App_DeviceConnected = false;
     Serial.println("Phone disconnected");
     server->startAdvertising();
   }
 };
 
 class SettingsCallbacks : public BLECharacteristicCallbacks {
-  void onConnect(BLEServer* server) override {
-    App_DeviceConnected = true;
-    Serial.println("Phone connected");
-  }
-
   void onWrite(BLECharacteristic* characteristic) override {
     String value = characteristic->getValue();
 
@@ -64,12 +57,6 @@ class SettingsCallbacks : public BLECharacteristicCallbacks {
     Serial.print(App_MeasureStyle);
     Serial.print(" | Needle: ");
     Serial.println(App_NeedleStyle);
-  }
-
-  void onDisconnect(BLEServer* server) override {
-    App_DeviceConnected = false;
-    Serial.println("Phone disconnected");
-    server->startAdvertising();
   }
 };
 
