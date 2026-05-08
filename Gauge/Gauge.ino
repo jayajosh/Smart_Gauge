@@ -4,18 +4,22 @@
 //#include "Wireless.h"
 //#include "Gyro_QMI8658.h"
 //#include "RTC_PCF85063.h"
-//#include "SD_Card.h"
+#include "SD_Card.h"
 #include "LVGL_Driver.h"
 //#include "BAT_Driver.h"
 #include "GPS_Driver.h"
 #include "BLE_App_Driver.h"
+#include "Map_Driver.h"
 #include "ui.h"
+#include <SD_MMC.h>
 
 enum SpeedoStyle { Cat = 0, Fire = 1, Hypersport = 2};
 
 SpeedoStyle backgroundStyle = Cat;
 SpeedoStyle measureStyle = Cat;
 SpeedoStyle needleStyle = Cat;
+
+bool mapLoaded = false;
 
 lv_obj_t * bleStatusSquare;
 
@@ -56,7 +60,6 @@ void Driver_Init()
   Set_EXIO(EXIO_PIN8,Low);
   //PCF85063_Init();
   //QMI8658_Init(); 
-  
   BLE_App_Init();
 
   GPS_Init();
@@ -120,21 +123,40 @@ void updateSpeedDisplay()
     lv_label_set_text(ui_SpeedLabel, speedStr);
 }
 
+void clearScreen2ForMap()
+{
+  lv_obj_add_flag(ui_Image1, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_add_flag(ui_Background1, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_add_flag(ui_Measure1, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_add_flag(ui_Needle1, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_add_flag(ui_Image2, LV_OBJ_FLAG_HIDDEN);
+
+  lv_obj_set_style_bg_color(ui_Screen2, lv_color_hex(0x000000), LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(ui_Screen2, LV_OPA_COVER, LV_PART_MAIN);
+}
+
 static void screen_gesture_cb(lv_event_t * e)
 {
     lv_dir_t dir = lv_indev_get_gesture_dir(lv_indev_get_act());
 
-    // Swipe LEFT → go to Screen2
     if(lv_scr_act() == ui_SpeedometerScreen && dir == LV_DIR_LEFT) {
-        backgroundStyle = Fire;
-        //updateSpeedometerScreenGraphics();
-        lv_scr_load_anim(ui_Screen2, LV_SCR_LOAD_ANIM_MOVE_LEFT, 300, 0, false);
+
+    Serial.println("SWIPE LEFT TO MAP");
+
+    clearScreen2ForMap();
+
+    if (!mapLoaded) {
+      Serial.println("INIT MAP");
+      Map_Init(ui_Screen2);
+
+      Serial.println("LOAD TEST TILE");
+      Map_ShowTestTile();
+
+      mapLoaded = true;
     }
 
-    // Swipe RIGHT → go back to SpeedometerScreen
-    else if(lv_scr_act() == ui_Screen2 && dir == LV_DIR_RIGHT) {
-        lv_scr_load_anim(ui_SpeedometerScreen, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 300, 0, false);
-    }
+    lv_scr_load_anim(ui_Screen2, LV_SCR_LOAD_ANIM_MOVE_LEFT, 300, 0, false);
+  }
 }
 
 void createBleStatusSquare()
@@ -175,19 +197,23 @@ void updateBleStatusSquare()
   lv_obj_move_foreground(bleStatusSquare);
 }
 
-
 void setup()
 {
   //Wireless_Test2();
   Driver_Init();
-  LCD_Init();                                     // If you later reinitialize the LCD, you must initialize the SD card again !!!!!!!!!!
-  //SD_Init();                                      // It must be initialized after the LCD, and if the LCD is reinitialized later, the SD also needs to be reinitialized
+  LCD_Init();                                     
+  SD_Init();                                    
   Lvgl_Init();
 
   ui_init();
 
+
+
   lv_obj_add_event_cb(ui_SpeedometerScreen, screen_gesture_cb, LV_EVENT_GESTURE, NULL);
   lv_obj_add_event_cb(ui_Screen2, screen_gesture_cb, LV_EVENT_GESTURE, NULL);
+
+
+  Serial.begin(115200);
 
   createBleStatusSquare();
   // lv_demo_widgets();               
@@ -196,7 +222,6 @@ void setup()
   // lv_demo_music();              
   // lv_demo_printer();
   // lv_demo_stress();   
-  
 }
 
 void loop()
