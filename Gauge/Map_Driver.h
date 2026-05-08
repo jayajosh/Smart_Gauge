@@ -3,5 +3,4 @@
 #include <lvgl.h>
 
 bool Map_Init(lv_obj_t * parent);
-bool Map_LoadTile(const char* path);
-void Map_ShowTestTile(void);
+void Map_ShowTileGrid(int zoom, int centerX, int centerY);

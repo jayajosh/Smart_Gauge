@@ -148,10 +148,7 @@ static void screen_gesture_cb(lv_event_t * e)
     if (!mapLoaded) {
       Serial.println("INIT MAP");
       Map_Init(ui_Screen2);
-
-      Serial.println("LOAD TEST TILE");
-      Map_ShowTestTile();
-
+      Map_ShowTileGrid(16, 32363, 21355);
       mapLoaded = true;
     }
 

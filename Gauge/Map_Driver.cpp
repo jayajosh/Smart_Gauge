@@ -1,62 +1,102 @@
 #include "Map_Driver.h"
-#include "SD_Card.h"
 #include <SD_MMC.h>
 
-static lv_obj_t* mapImg = NULL;
-static uint8_t* tileBuffer = NULL;
-static lv_img_dsc_t tileDsc;
+#define TILE_SIZE 256
+#define GRID_SIZE 3
+#define TILE_BYTES (TILE_SIZE * TILE_SIZE * 2)
 
-bool Map_Init(lv_obj_t * parent)
-{
-  tileBuffer = (uint8_t*)ps_malloc(256 * 256 * 2);
+static lv_obj_t* tileImgs[GRID_SIZE][GRID_SIZE];
+static uint8_t* tileBuffers[GRID_SIZE][GRID_SIZE];
+static lv_img_dsc_t tileDsc[GRID_SIZE][GRID_SIZE];
 
-  if (!tileBuffer) {
-    Serial.println("Map tile buffer allocation failed");
-    return false;
-  }
+static lv_obj_t* mapParent = NULL;
 
-  mapImg = lv_img_create(parent);
-  lv_obj_center(mapImg);
-
-  return true;
-}
-
-bool Map_LoadTile(const char* path)
+bool loadTileToBuffer(const char* path, uint8_t* buffer)
 {
   File f = SD_MMC.open(path, FILE_READ);
 
-  size_t expectedSize = 256 * 256 * 2;
+  if (!f) {
+    Serial.print("Tile not found: ");
+    Serial.println(path);
+    return false;
+  }
+
   size_t fileSize = f.size();
 
-  if (fileSize == expectedSize + 12) {
-    Serial.println("Tile has 12-byte header, skipping it");
-    f.seek(12);
+  if (fileSize == TILE_BYTES + 12) {
+    f.seek(12); // converter added 12-byte header
   }
-  else if (fileSize != expectedSize) {
+  else if (fileSize != TILE_BYTES) {
     Serial.print("Wrong tile size: ");
+    Serial.print(path);
+    Serial.print(" size=");
     Serial.println(fileSize);
     f.close();
     return false;
   }
 
-  f.read(tileBuffer, expectedSize);
+  size_t bytesRead = f.read(buffer, TILE_BYTES);
   f.close();
 
-  tileDsc.header.always_zero = 0;
-  tileDsc.header.w = 256;
-  tileDsc.header.h = 256;
-  tileDsc.header.cf = LV_IMG_CF_TRUE_COLOR;
-  tileDsc.data_size = 256 * 256 * 2;
-  tileDsc.data = tileBuffer;
+  return bytesRead == TILE_BYTES;
+}
 
-  lv_img_set_src(mapImg, &tileDsc);
-  lv_obj_center(mapImg);
+bool Map_Init(lv_obj_t * parent)
+{
+  mapParent = parent;
 
-  Serial.println("Tile loaded");
+  for (int row = 0; row < GRID_SIZE; row++) {
+    for (int col = 0; col < GRID_SIZE; col++) {
+
+      tileBuffers[row][col] = (uint8_t*)ps_malloc(TILE_BYTES);
+
+      if (!tileBuffers[row][col]) {
+        Serial.println("Failed to allocate tile buffer");
+        return false;
+      }
+
+      tileDsc[row][col].header.always_zero = 0;
+      tileDsc[row][col].header.w = TILE_SIZE;
+      tileDsc[row][col].header.h = TILE_SIZE;
+      tileDsc[row][col].header.cf = LV_IMG_CF_TRUE_COLOR;
+      tileDsc[row][col].data_size = TILE_BYTES;
+      tileDsc[row][col].data = tileBuffers[row][col];
+
+      tileImgs[row][col] = lv_img_create(mapParent);
+      lv_img_set_src(tileImgs[row][col], &tileDsc[row][col]);
+      lv_obj_clear_flag(tileImgs[row][col], LV_OBJ_FLAG_SCROLLABLE);
+    }
+  }
+
+  Serial.println("Map grid initialised");
   return true;
 }
 
-void Map_ShowTestTile(void)
+void Map_ShowTileGrid(int zoom, int centerX, int centerY)
 {
-  Map_LoadTile("/tiles/16/32363/21355.bin");
+  int screenCenterX = 240;
+  int screenCenterY = 240;
+
+  for (int row = 0; row < GRID_SIZE; row++) {
+    for (int col = 0; col < GRID_SIZE; col++) {
+
+      int tileX = centerX + (col - 1);
+      int tileY = centerY + (row - 1);
+
+      char path[80];
+      snprintf(path, sizeof(path), "/tiles/%d/%d/%d.bin", zoom, tileX, tileY);
+
+      if (loadTileToBuffer(path, tileBuffers[row][col])) {
+        lv_img_set_src(tileImgs[row][col], &tileDsc[row][col]);
+      }
+
+      int drawX = screenCenterX + ((col - 1) * TILE_SIZE) - (TILE_SIZE / 2);
+      int drawY = screenCenterY + ((row - 1) * TILE_SIZE) - (TILE_SIZE / 2);
+
+      lv_obj_set_pos(tileImgs[row][col], drawX, drawY);
+      lv_obj_move_foreground(tileImgs[row][col]);
+    }
+  }
+
+  Serial.println("3x3 tile grid loaded");
 }
