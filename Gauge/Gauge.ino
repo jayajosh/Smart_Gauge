@@ -243,11 +243,10 @@ void loop()
 
 
   if (mapLoaded == true) {
-    if (millis() - lastMapMove > 30) {
+    if (millis() - lastMapMove > 15) {
       lastMapMove = millis();
 
-      fakeOffset = (fakeOffset + 1) % 256;
-      Map_MovePixels(fakeOffset, 0);
+      Map_MovePixels(-1, -1);
     }
   }
 

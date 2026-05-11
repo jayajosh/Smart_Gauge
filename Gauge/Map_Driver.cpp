@@ -2,7 +2,8 @@
 #include <SD_MMC.h>
 
 #define TILE_SIZE 256
-#define GRID_SIZE 3
+#define GRID_SIZE 5
+#define GRID_CENTER 2
 #define TILE_BYTES (TILE_SIZE * TILE_SIZE * 2)
 
 static lv_obj_t* tileImgs[GRID_SIZE][GRID_SIZE];
@@ -10,10 +11,13 @@ static uint8_t* tileBuffers[GRID_SIZE][GRID_SIZE];
 static lv_img_dsc_t tileDsc[GRID_SIZE][GRID_SIZE];
 
 static lv_obj_t* mapParent = NULL;
+static lv_obj_t * gpsMarker = NULL;
 
 static int currentZoom = 16;
 static int currentCenterX = 32363; //TODO Make gps?
 static int currentCenterY = 21355;
+
+void Map_CreateGpsMarker(void);
 
 bool loadTileToBuffer(const char* path, uint8_t* buffer)
 {
@@ -73,8 +77,163 @@ bool Map_Init(lv_obj_t * parent)
   }
 
   Serial.println("Map grid initialised");
+  Map_CreateGpsMarker();
   return true;
 }
+
+//  --- Map directional shifting ---
+
+void RefreshDescriptors()
+{
+  for (int row = 0; row < GRID_SIZE; row++) {
+    for (int col = 0; col < GRID_SIZE; col++) {
+      tileDsc[row][col].data = tileBuffers[row][col];
+      lv_img_set_src(tileImgs[row][col], &tileDsc[row][col]);
+    }
+  }
+  if (gpsMarker != NULL) {
+    lv_obj_move_foreground(gpsMarker);
+  }
+}
+
+void Map_ReloadColumn(int col)
+{
+  for (int row = 0; row < GRID_SIZE; row++) {
+    int tileX = currentCenterX + (col - GRID_CENTER);
+    int tileY = currentCenterY + (row - GRID_CENTER);
+
+    char path[80];
+    snprintf(path, sizeof(path), "/tiles/%d/%d/%d.bin", currentZoom, tileX, tileY);
+
+    loadTileToBuffer(path, tileBuffers[row][col]);
+    lv_img_set_src(tileImgs[row][col], &tileDsc[row][col]);
+  }
+}
+
+void Map_ReloadRow(int row)
+{
+  for (int col = 0; col < GRID_SIZE; col++) {
+
+    int tileX = currentCenterX + (col - GRID_CENTER);
+    int tileY = currentCenterY + (row - GRID_CENTER);
+
+    char path[80];
+    snprintf(path, sizeof(path), "/tiles/%d/%d/%d.bin",
+             currentZoom, tileX, tileY);
+
+    loadTileToBuffer(path, tileBuffers[row][col]);
+
+    tileDsc[row][col].data = tileBuffers[row][col];
+    lv_img_set_src(tileImgs[row][col], &tileDsc[row][col]);
+  }
+}
+
+void Map_ShiftRight()
+{
+  lv_obj_t* oldImgs[GRID_SIZE];
+  uint8_t* oldBuffers[GRID_SIZE];
+
+  for (int row = 0; row < GRID_SIZE; row++) {
+    oldImgs[row] = tileImgs[row][0];
+    oldBuffers[row] = tileBuffers[row][0];
+  }
+
+  for (int col = 0; col < GRID_SIZE - 1; col++) {
+    for (int row = 0; row < GRID_SIZE; row++) {
+      tileImgs[row][col] = tileImgs[row][col + 1];
+      tileBuffers[row][col] = tileBuffers[row][col + 1];
+    }
+  }
+
+  for (int row = 0; row < GRID_SIZE; row++) {
+    tileImgs[row][GRID_SIZE - 1] = oldImgs[row];
+    tileBuffers[row][GRID_SIZE - 1] = oldBuffers[row];
+  }
+
+  Map_ReloadColumn(GRID_SIZE - 1);
+  RefreshDescriptors();
+}
+
+void Map_ShiftLeft()
+ {
+  lv_obj_t* oldImgs[GRID_SIZE];
+  uint8_t* oldBuffers[GRID_SIZE];
+
+  for (int row = 0; row < GRID_SIZE; row++) {
+    oldImgs[row] = tileImgs[row][GRID_SIZE - 1];
+    oldBuffers[row] = tileBuffers[row][GRID_SIZE - 1];
+  }
+
+  for (int col = GRID_SIZE - 1; col > 0; col--) {
+    for (int row = 0; row < GRID_SIZE; row++) {
+      tileImgs[row][col] = tileImgs[row][col - 1];
+      tileBuffers[row][col] = tileBuffers[row][col - 1];
+    }
+  }
+
+  for (int row = 0; row < GRID_SIZE; row++) {
+    tileImgs[row][0] = oldImgs[row];
+    tileBuffers[row][0] = oldBuffers[row];
+  }
+
+
+  Map_ReloadColumn(0);
+  RefreshDescriptors();
+}
+
+void Map_ShiftDown()
+{
+  lv_obj_t* oldImgs[GRID_SIZE];
+  uint8_t* oldBuffers[GRID_SIZE];
+
+  for (int col = 0; col < GRID_SIZE; col++) {
+    oldImgs[col] = tileImgs[0][col];
+    oldBuffers[col] = tileBuffers[0][col];
+  }
+
+  for (int row = 0; row < GRID_SIZE - 1; row++) {
+    for (int col = 0; col < GRID_SIZE; col++) {
+      tileImgs[row][col] = tileImgs[row + 1][col];
+      tileBuffers[row][col] = tileBuffers[row + 1][col];
+    }
+  }
+
+  for (int col = 0; col < GRID_SIZE; col++) {
+    tileImgs[GRID_SIZE - 1][col] = oldImgs[col];
+    tileBuffers[GRID_SIZE - 1][col] = oldBuffers[col];
+  }
+
+  Map_ReloadRow(GRID_SIZE - 1);
+  RefreshDescriptors();
+}
+
+void Map_ShiftUp()
+{
+  lv_obj_t* oldImgs[GRID_SIZE];
+  uint8_t* oldBuffers[GRID_SIZE];
+
+  for (int col = 0; col < GRID_SIZE; col++) {
+    oldImgs[col] = tileImgs[GRID_SIZE - 1][col];
+    oldBuffers[col] = tileBuffers[GRID_SIZE - 1][col];
+  }
+
+  for (int row = GRID_SIZE - 1; row > 0; row--) {
+    for (int col = 0; col < GRID_SIZE; col++) {
+      tileImgs[row][col] = tileImgs[row - 1][col];
+      tileBuffers[row][col] = tileBuffers[row - 1][col];
+    }
+  }
+
+  for (int col = 0; col < GRID_SIZE; col++) {
+    tileImgs[0][col] = oldImgs[col];
+    tileBuffers[0][col] = oldBuffers[col];
+  }
+
+  Map_ReloadRow(0);
+  RefreshDescriptors();
+}
+
+//  --- Set map shift --
 
 void Map_SetOffset(int offsetX, int offsetY)
 {
@@ -84,8 +243,8 @@ void Map_SetOffset(int offsetX, int offsetY)
   for (int row = 0; row < GRID_SIZE; row++) {
     for (int col = 0; col < GRID_SIZE; col++) {
 
-      int drawX = screenCenterX + ((col - 1) * TILE_SIZE) - (TILE_SIZE / 2) - offsetX;
-      int drawY = screenCenterY + ((row - 1) * TILE_SIZE) - (TILE_SIZE / 2) - offsetY;
+      int drawX = screenCenterX + ((col - GRID_CENTER) * TILE_SIZE) - (TILE_SIZE / 2) - offsetX;
+      int drawY = screenCenterY + ((row - GRID_CENTER) * TILE_SIZE) - (TILE_SIZE / 2) - offsetY;
 
       lv_obj_set_pos(tileImgs[row][col], drawX, drawY);
     }
@@ -103,25 +262,25 @@ void Map_MovePixels(int dx, int dy)
   while (offsetX >= TILE_SIZE) {
     offsetX -= TILE_SIZE;
     currentCenterX += 1;
-    Map_ShowTileGrid(currentZoom, currentCenterX, currentCenterY);
+    Map_ShiftRight();
   }
 
   while (offsetX < 0) {
     offsetX += TILE_SIZE;
     currentCenterX -= 1;
-    Map_ShowTileGrid(currentZoom, currentCenterX, currentCenterY);
+    Map_ShiftLeft();;
   }
 
   while (offsetY >= TILE_SIZE) {
     offsetY -= TILE_SIZE;
     currentCenterY += 1;
-    Map_ShowTileGrid(currentZoom, currentCenterX, currentCenterY);
+    Map_ShiftDown();
   }
 
   while (offsetY < 0) {
     offsetY += TILE_SIZE;
     currentCenterY -= 1;
-    Map_ShowTileGrid(currentZoom, currentCenterX, currentCenterY);
+    Map_ShiftUp();
   }
 
   Map_SetOffset(offsetX, offsetY);
@@ -135,8 +294,8 @@ void Map_ShowTileGrid(int zoom, int centerX, int centerY)
   for (int row = 0; row < GRID_SIZE; row++) {
     for (int col = 0; col < GRID_SIZE; col++) {
 
-      int tileX = centerX + (col - 1);
-      int tileY = centerY + (row - 1);
+      int tileX = centerX + (col - GRID_CENTER);
+      int tileY = centerY + (row - GRID_CENTER);
 
       char path[80];
       snprintf(path, sizeof(path), "/tiles/%d/%d/%d.bin", zoom, tileX, tileY);
@@ -145,13 +304,35 @@ void Map_ShowTileGrid(int zoom, int centerX, int centerY)
         lv_img_set_src(tileImgs[row][col], &tileDsc[row][col]);
       }
 
-      int drawX = screenCenterX + ((col - 1) * TILE_SIZE) - (TILE_SIZE / 2);
-      int drawY = screenCenterY + ((row - 1) * TILE_SIZE) - (TILE_SIZE / 2);
+      int drawX = screenCenterX + ((col - GRID_CENTER) * TILE_SIZE) - (TILE_SIZE / 2);
+      int drawY = screenCenterY + ((row - GRID_CENTER) * TILE_SIZE) - (TILE_SIZE / 2);
 
       lv_obj_set_pos(tileImgs[row][col], drawX, drawY);
       lv_obj_move_foreground(tileImgs[row][col]);
     }
   }
+  if (gpsMarker != NULL) {
+    lv_obj_move_foreground(gpsMarker);
+  }
+}
 
-  Serial.println("3x3 tile grid loaded");
+
+//  --- Centre Marker ---
+void Map_CreateGpsMarker()
+{
+  gpsMarker = lv_label_create(mapParent);
+
+  lv_label_set_text(gpsMarker, "▲");
+
+  lv_obj_set_style_text_color(gpsMarker,
+                              lv_color_hex(0xFF3333),
+                              LV_PART_MAIN);
+
+  lv_obj_set_style_text_font(gpsMarker,
+                             &lv_font_montserrat_14,
+                             LV_PART_MAIN);
+
+  lv_obj_align(gpsMarker, LV_ALIGN_CENTER, 0, -4);
+
+  lv_obj_move_foreground(gpsMarker);
 }
