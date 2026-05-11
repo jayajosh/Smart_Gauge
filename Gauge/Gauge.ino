@@ -221,6 +221,9 @@ void setup()
   // lv_demo_stress();   
 }
 
+static int fakeOffset = 0;
+static uint32_t lastMapMove = 0;
+
 void loop()
 {
   updateBleStatusSquare();
@@ -236,4 +239,16 @@ void loop()
   updateSpeedDisplay();
   Lvgl_Loop();
   vTaskDelay(pdMS_TO_TICKS(5));
+
+
+
+  if (mapLoaded == true) {
+    if (millis() - lastMapMove > 30) {
+      lastMapMove = millis();
+
+      fakeOffset = (fakeOffset + 1) % 256;
+      Map_MovePixels(fakeOffset, 0);
+    }
+  }
+
 }

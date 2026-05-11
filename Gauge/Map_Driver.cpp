@@ -11,6 +11,10 @@ static lv_img_dsc_t tileDsc[GRID_SIZE][GRID_SIZE];
 
 static lv_obj_t* mapParent = NULL;
 
+static int currentZoom = 16;
+static int currentCenterX = 32363; //TODO Make gps?
+static int currentCenterY = 21355;
+
 bool loadTileToBuffer(const char* path, uint8_t* buffer)
 {
   File f = SD_MMC.open(path, FILE_READ);
@@ -70,6 +74,57 @@ bool Map_Init(lv_obj_t * parent)
 
   Serial.println("Map grid initialised");
   return true;
+}
+
+void Map_SetOffset(int offsetX, int offsetY)
+{
+  int screenCenterX = 240;
+  int screenCenterY = 240;
+
+  for (int row = 0; row < GRID_SIZE; row++) {
+    for (int col = 0; col < GRID_SIZE; col++) {
+
+      int drawX = screenCenterX + ((col - 1) * TILE_SIZE) - (TILE_SIZE / 2) - offsetX;
+      int drawY = screenCenterY + ((row - 1) * TILE_SIZE) - (TILE_SIZE / 2) - offsetY;
+
+      lv_obj_set_pos(tileImgs[row][col], drawX, drawY);
+    }
+  }
+}
+
+void Map_MovePixels(int dx, int dy)
+{
+  static int offsetX = 0;
+  static int offsetY = 0;
+
+  offsetX += dx;
+  offsetY += dy;
+
+  while (offsetX >= TILE_SIZE) {
+    offsetX -= TILE_SIZE;
+    currentCenterX += 1;
+    Map_ShowTileGrid(currentZoom, currentCenterX, currentCenterY);
+  }
+
+  while (offsetX < 0) {
+    offsetX += TILE_SIZE;
+    currentCenterX -= 1;
+    Map_ShowTileGrid(currentZoom, currentCenterX, currentCenterY);
+  }
+
+  while (offsetY >= TILE_SIZE) {
+    offsetY -= TILE_SIZE;
+    currentCenterY += 1;
+    Map_ShowTileGrid(currentZoom, currentCenterX, currentCenterY);
+  }
+
+  while (offsetY < 0) {
+    offsetY += TILE_SIZE;
+    currentCenterY -= 1;
+    Map_ShowTileGrid(currentZoom, currentCenterX, currentCenterY);
+  }
+
+  Map_SetOffset(offsetX, offsetY);
 }
 
 void Map_ShowTileGrid(int zoom, int centerX, int centerY)
