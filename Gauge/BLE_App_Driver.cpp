@@ -6,12 +6,19 @@
 
 #define SERVICE_UUID        "9f1c0d2a-2b5a-4e2b-8d37-0a4e1f6b9001"
 #define SETTINGS_CHAR_UUID  "9f1c0d2a-2b5a-4e2b-8d37-0a4e1f6b9002"
+#define MAX_ROUTE_CHUNKS 20
+
+String routeChunks[MAX_ROUTE_CHUNKS];
+int expectedRouteChunks = 0;
+bool routeReady = false;
+String fullRouteString = "";
 
 volatile int App_BackgroundStyle = 0;
 volatile int App_MeasureStyle = 0;
 volatile int App_NeedleStyle = 0;
 volatile bool App_SettingsUpdated = false;
 volatile bool App_DeviceConnected = false;
+
 
 class ServerCallbacks : public BLEServerCallbacks {
   void onConnect(BLEServer* server) override {
@@ -26,13 +33,78 @@ class ServerCallbacks : public BLEServerCallbacks {
   }
 };
 
-class SettingsCallbacks : public BLECharacteristicCallbacks {
+class AppCallbacks : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic* characteristic) override {
     String value = characteristic->getValue();
 
     Serial.print("Received: ");
     Serial.println(value);
 
+    if (value.startsWith("SETTINGS:")) {
+      parseSettings(value.substring(9));
+      return;
+    }
+
+    if (value.startsWith("{")) {
+      // backwards compatibility with old raw JSON settings
+      parseSettings(value);
+      return;
+    }
+
+    if (value.startsWith("ROUTE_START:")) {
+      expectedRouteChunks = value.substring(12).toInt();
+      fullRouteString = "";
+      routeReady = false;
+
+      for (int i = 0; i < MAX_ROUTE_CHUNKS; i++) {
+        routeChunks[i] = "";
+      }
+
+      Serial.print("Route transfer started. Expected chunks: ");
+      Serial.println(expectedRouteChunks);
+      return;
+    }
+
+    if (value.startsWith("ROUTE_CHUNK:")) {
+      int firstColon = value.indexOf(':');
+      int secondColon = value.indexOf(':', firstColon + 1);
+
+      int chunkIndex = value.substring(firstColon + 1, secondColon).toInt();
+      String chunkData = value.substring(secondColon + 1);
+
+      if (chunkIndex >= 0 && chunkIndex < MAX_ROUTE_CHUNKS) {
+        routeChunks[chunkIndex] = chunkData;
+      }
+
+      Serial.print("Stored route chunk ");
+      Serial.print(chunkIndex);
+      Serial.print(" bytes: ");
+      Serial.println(chunkData.length());
+
+      return;
+    }
+
+    if (value.startsWith("ROUTE_END")) {
+      fullRouteString = "";
+
+      for (int i = 0; i < expectedRouteChunks; i++) {
+        fullRouteString += routeChunks[i];
+      }
+
+      routeReady = true;
+
+      Serial.print("Route rebuilt. Bytes: ");
+      Serial.println(fullRouteString.length());
+      Serial.println(fullRouteString);
+
+      return;
+    }
+
+    Serial.print("Unknown BLE message: ");
+    Serial.println(value);
+  }
+
+  void parseSettings(String value) {
     int bgIndex = value.indexOf("\"bg\":");
     int measureIndex = value.indexOf("\"measure\":");
     int needleIndex = value.indexOf("\"needle\":");
@@ -74,7 +146,7 @@ void BLE_App_Init(void)
     BLECharacteristic::PROPERTY_WRITE
   );
 
-  settingsCharacteristic->setCallbacks(new SettingsCallbacks());
+  settingsCharacteristic->setCallbacks(new AppCallbacks());
 
   service->start();
 

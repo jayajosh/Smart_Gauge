@@ -1,10 +1,13 @@
 #include "Map_Driver.h"
 #include <SD_MMC.h>
+#include <math.h>
 
 #define TILE_SIZE 256
 #define GRID_SIZE 5
 #define GRID_CENTER 2
 #define TILE_BYTES (TILE_SIZE * TILE_SIZE * 2)
+#define MAX_ROUTE_POINTS 1000
+#define ROUTE_DRAW_POINTS 80
 
 static lv_obj_t* tileImgs[GRID_SIZE][GRID_SIZE];
 static uint8_t* tileBuffers[GRID_SIZE][GRID_SIZE];
@@ -17,7 +20,26 @@ static int currentZoom = 16;
 static int currentCenterX = 32363; //TODO Make gps?
 static int currentCenterY = 21355;
 
+struct RoutePoint {
+  float lat;
+  float lon;
+};
+
+static RoutePoint routePoints[MAX_ROUTE_POINTS];
+
+static lv_point_t routeScreenPoints[ROUTE_DRAW_POINTS];
+
+static int routePointCount = 0;
+static int currentRouteIndex = 0;
+static lv_obj_t* routeLine = NULL;
+
+static int currentOffsetX = 0;
+static int currentOffsetY = 0;
+
 void Map_CreateGpsMarker(void);
+void Map_UpdateRouteLine(void);
+void latLonToTilePixel(double lat, double lon, int* tileX, int* tileY, int* pixelX, int* pixelY);
+int Map_FindClosestRoutePoint(double lat, double lon);
 
 bool loadTileToBuffer(const char* path, uint8_t* buffer)
 {
@@ -78,6 +100,13 @@ bool Map_Init(lv_obj_t * parent)
 
   Serial.println("Map grid initialised");
   Map_CreateGpsMarker();
+
+  routeLine = lv_line_create(mapParent);
+  lv_obj_set_style_line_width(routeLine, 5, LV_PART_MAIN);
+  lv_obj_set_style_line_color(routeLine, lv_color_hex(0x00AAFF), LV_PART_MAIN);
+  lv_obj_set_style_line_rounded(routeLine, true, LV_PART_MAIN);
+  lv_obj_move_foreground(routeLine);
+  
   return true;
 }
 
@@ -240,6 +269,9 @@ void Map_SetOffset(int offsetX, int offsetY)
   int screenCenterX = 240;
   int screenCenterY = 240;
 
+  currentOffsetX = offsetX;
+  currentOffsetY = offsetY;
+
   for (int row = 0; row < GRID_SIZE; row++) {
     for (int col = 0; col < GRID_SIZE; col++) {
 
@@ -335,4 +367,153 @@ void Map_CreateGpsMarker()
   lv_obj_align(gpsMarker, LV_ALIGN_CENTER, 0, -4);
 
   lv_obj_move_foreground(gpsMarker);
+}
+
+//  --- GPS Updates ---
+void Map_UpdateFromGPS(double lat, double lon)
+{
+  if (lat == 0.0 && lon == 0.0) return;
+
+  double latRad = lat * DEG_TO_RAD;
+  double n = pow(2.0, currentZoom);
+
+  double xFloat = (lon + 180.0) / 360.0 * n;
+  double yFloat = (1.0 - log(tan(latRad) + 1.0 / cos(latRad)) / PI) / 2.0 * n;
+
+  int tileX = (int)xFloat;
+  int tileY = (int)yFloat;
+
+  int pixelX = (int)((xFloat - tileX) * TILE_SIZE);
+  int pixelY = (int)((yFloat - tileY) * TILE_SIZE);
+
+  if (tileX != currentCenterX || tileY != currentCenterY) {
+    currentCenterX = tileX;
+    currentCenterY = tileY;
+    Map_ShowTileGrid(currentZoom, currentCenterX, currentCenterY);
+  }
+
+  int offsetX = pixelX - (TILE_SIZE / 2);
+  int offsetY = pixelY - (TILE_SIZE / 2);
+
+  Map_SetOffset(offsetX, offsetY);
+
+  if (routePointCount > 0) {
+    currentRouteIndex = Map_FindClosestRoutePoint(lat, lon);
+    Map_UpdateRouteLine();
+  }
+}
+
+//  --- Routing ---
+
+int Map_FindClosestRoutePoint(double lat, double lon)
+{
+  if (routePointCount == 0) return 0;
+
+  int bestIndex = currentRouteIndex;
+  double bestDist = 999999999.0;
+
+  int searchStart = max(0, currentRouteIndex - 10);
+  int searchEnd = min(routePointCount, currentRouteIndex + 80);
+
+  for (int i = searchStart; i < searchEnd; i++) {
+    double dLat = routePoints[i].lat - lat;
+    double dLon = routePoints[i].lon - lon;
+
+    double dist = (dLat * dLat) + (dLon * dLon);
+
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestIndex = i;
+    }
+  }
+
+  return bestIndex;
+}
+
+void latLonToTilePixel(double lat, double lon, int* tileX, int* tileY, int* pixelX, int* pixelY)
+{
+  double latRad = lat * DEG_TO_RAD;
+  double n = pow(2.0, currentZoom);
+
+  double xFloat = (lon + 180.0) / 360.0 * n;
+  double yFloat = (1.0 - log(tan(latRad) + 1.0 / cos(latRad)) / PI) / 2.0 * n;
+
+  *tileX = (int)xFloat;
+  *tileY = (int)yFloat;
+
+  *pixelX = (int)((xFloat - *tileX) * TILE_SIZE);
+  *pixelY = (int)((yFloat - *tileY) * TILE_SIZE);
+}
+
+void Map_UpdateRouteLine()
+{
+  if (routePointCount <= 1 || routeLine == NULL) return;
+
+  int pointsToDraw = min(ROUTE_DRAW_POINTS, routePointCount - currentRouteIndex);
+
+  if (pointsToDraw <= 1) return;
+
+  for (int i = 0; i < pointsToDraw; i++) {
+    int routeIndex = currentRouteIndex + i;
+
+    int tileX, tileY, pixelX, pixelY;
+
+    latLonToTilePixel(
+      routePoints[routeIndex].lat,
+      routePoints[routeIndex].lon,
+      &tileX,
+      &tileY,
+      &pixelX,
+      &pixelY
+    );
+
+    int screenX = 240 + ((tileX - currentCenterX) * TILE_SIZE) + pixelX - 128 - currentOffsetX;
+    int screenY = 240 + ((tileY - currentCenterY) * TILE_SIZE) + pixelY - 128 - currentOffsetY;
+
+    routeScreenPoints[i].x = screenX;
+    routeScreenPoints[i].y = screenY;
+  }
+
+  lv_line_set_points(routeLine, routeScreenPoints, pointsToDraw);
+  lv_obj_move_foreground(routeLine);
+
+  if (gpsMarker != NULL) {
+    lv_obj_move_foreground(gpsMarker);
+  }
+}
+
+void Map_LoadRouteFromString(String routeString)
+{
+  routePointCount = 0;
+
+  int start = 0;
+
+  while (start < routeString.length() && routePointCount < MAX_ROUTE_POINTS) {
+    int semi = routeString.indexOf(';', start);
+
+    if (semi == -1) {
+      semi = routeString.length();
+    }
+
+    String pair = routeString.substring(start, semi);
+    int comma = pair.indexOf(',');
+
+    if (comma > 0) {
+      String latStr = pair.substring(0, comma);
+      String lonStr = pair.substring(comma + 1);
+
+      routePoints[routePointCount].lat = latStr.toFloat();
+      routePoints[routePointCount].lon = lonStr.toFloat();
+
+      routePointCount++;
+    }
+
+    start = semi + 1;
+  }
+
+  Serial.print("Parsed route points: ");
+  Serial.println(routePointCount);
+
+
+  currentRouteIndex = 0;
 }

@@ -240,14 +240,13 @@ void loop()
   Lvgl_Loop();
   vTaskDelay(pdMS_TO_TICKS(5));
 
+  if (routeReady) {
+    routeReady = false;
+    Map_LoadRouteFromString(fullRouteString);
+  }
 
-
-  if (mapLoaded == true) {
-    if (millis() - lastMapMove > 15) {
-      lastMapMove = millis();
-
-      Map_MovePixels(-1, -1);
-    }
+  if (mapLoaded && GPS_Fix) {
+    Map_UpdateFromGPS(GPS_Latitude, GPS_Longitude);
   }
 
 }

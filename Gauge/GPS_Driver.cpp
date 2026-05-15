@@ -11,6 +11,9 @@ float GPS_Speed_MPH = 0.0;
 float GPS_Speed_KMH = 0.0;
 bool GPS_Fix = false;
 
+double GPS_Latitude = 0.0;
+double GPS_Longitude = 0.0;
+
 static String nmeaLine = "";
 
 const uint8_t UBX_SET_RATE_10HZ[] = {
@@ -30,6 +33,23 @@ void GPS_Init(void)
     delay(200);
 
     GPS.write(UBX_SET_RATE_10HZ, sizeof(UBX_SET_RATE_10HZ));
+}
+
+static double convertNMEAToDecimal(String raw, String direction)
+{
+  if (raw.length() < 4) return 0.0;
+
+  double value = raw.toDouble();
+  int degrees = (int)(value / 100);
+  double minutes = value - (degrees * 100);
+
+  double decimal = degrees + (minutes / 60.0);
+
+  if (direction == "S" || direction == "W") {
+    decimal *= -1.0;
+  }
+
+  return decimal;
 }
 
 static void parseRMC(const String& line)
@@ -52,6 +72,9 @@ static void parseRMC(const String& line)
 
     if (partIndex > 7 && parts[2] == "A") {
         GPS_Fix = true;
+
+        GPS_Latitude = convertNMEAToDecimal(parts[3], parts[4]);
+        GPS_Longitude = convertNMEAToDecimal(parts[5], parts[6]);
 
         float knots = parts[7].toFloat();
         GPS_Speed_KMH = knots * 1.852f;

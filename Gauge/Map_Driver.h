@@ -7,3 +7,5 @@ void Map_ShowTileGrid(int zoom, int centerX, int centerY);
 void Map_SetOffset(int offsetX, int offsetY);
 void Map_MovePixels(int dx, int dy);
 void Map_CreateGpsMarker(void);
+void Map_UpdateFromGPS(double lat, double lon);
+void Map_LoadRouteFromString(String routeString);
