@@ -6,8 +6,5 @@ Contents:
 - Map tiles exported from QGIS
 - Map tiles converted for LVGL
 
-GitHub Repository:
-https://github.com/jayajosh/Smart_Gauge
-
 Author:
 Joshua Aston-Adams
