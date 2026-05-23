@@ -140,19 +140,12 @@ static void screen_gesture_cb(lv_event_t * e)
     lv_dir_t dir = lv_indev_get_gesture_dir(lv_indev_get_act());
 
     if(lv_scr_act() == ui_SpeedometerScreen && dir == LV_DIR_LEFT) {
-
-    Serial.println("SWIPE LEFT TO MAP");
-
-    clearScreen2ForMap();
-
-    if (!mapLoaded) {
-      Serial.println("INIT MAP");
-      Map_Init(ui_Screen2);
-      Map_ShowTileGrid(16, 32363, 21355);
-      mapLoaded = true;
-    }
-
+    mapLoaded = true;
     lv_scr_load_anim(ui_Screen2, LV_SCR_LOAD_ANIM_MOVE_LEFT, 300, 0, false);
+  }
+
+    if(lv_scr_act() == ui_Screen2 && dir == LV_DIR_RIGHT) {
+    lv_scr_load_anim(ui_SpeedometerScreen, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 300, 0, false);
   }
 }
 
@@ -204,6 +197,10 @@ void setup()
 
   ui_init();
 
+  clearScreen2ForMap();
+  Map_Init(ui_Screen2);
+  Map_ShowTileGrid(16, 32363, 21355);
+  mapLoaded = true;
 
 
   lv_obj_add_event_cb(ui_SpeedometerScreen, screen_gesture_cb, LV_EVENT_GESTURE, NULL);

@@ -12,6 +12,8 @@ lv_obj_t * ui_Measure = NULL;
 lv_obj_t * ui_Needle = NULL;
 lv_obj_t * ui_Image7 = NULL;
 lv_obj_t * ui_SpeedLabel = NULL;
+
+extern const lv_font_t Roboto_32;
 // event funtions
 
 // build funtions
@@ -75,7 +77,7 @@ void ui_SpeedometerScreen_screen_init(void)
     lv_label_set_text(ui_SpeedLabel, "");
     lv_obj_set_style_text_color(ui_SpeedLabel, lv_color_hex(0x808080), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(ui_SpeedLabel, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(ui_SpeedLabel, &lv_font_montserrat_14, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(ui_SpeedLabel, &Roboto_32, LV_PART_MAIN | LV_STATE_DEFAULT);
 
 }
 

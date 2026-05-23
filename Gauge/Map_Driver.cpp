@@ -17,8 +17,8 @@ static lv_obj_t* mapParent = NULL;
 static lv_obj_t * gpsMarker = NULL;
 
 static int currentZoom = 16;
-static int currentCenterX = 32363; //TODO Make gps?
-static int currentCenterY = 21355;
+static int currentCenterX = 32375;
+static int currentCenterY = 21350;
 
 struct RoutePoint {
   float lat;
@@ -352,19 +352,35 @@ void Map_ShowTileGrid(int zoom, int centerX, int centerY)
 //  --- Centre Marker ---
 void Map_CreateGpsMarker()
 {
-  gpsMarker = lv_label_create(mapParent);
+   gpsMarker = lv_obj_create(mapParent);
 
-  lv_label_set_text(gpsMarker, "▲");
+  lv_obj_set_size(gpsMarker, 18, 18);
 
-  lv_obj_set_style_text_color(gpsMarker,
-                              lv_color_hex(0xFF3333),
-                              LV_PART_MAIN);
+  lv_obj_set_style_radius(gpsMarker, LV_RADIUS_CIRCLE, LV_PART_MAIN);
 
-  lv_obj_set_style_text_font(gpsMarker,
-                             &lv_font_montserrat_14,
-                             LV_PART_MAIN);
+  lv_obj_set_style_bg_color(
+    gpsMarker,
+    lv_color_hex(0xa8a4a1),
+    LV_PART_MAIN
+  );
 
-  lv_obj_align(gpsMarker, LV_ALIGN_CENTER, 0, -4);
+  lv_obj_set_style_bg_opa(
+    gpsMarker,
+    LV_OPA_COVER,
+    LV_PART_MAIN
+  );
+
+  lv_obj_set_style_border_width(gpsMarker, 3, LV_PART_MAIN);
+
+  lv_obj_set_style_border_color(
+    gpsMarker,
+    lv_color_hex(0xFFFFFF),
+    LV_PART_MAIN
+  );
+
+  lv_obj_clear_flag(gpsMarker, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_align(gpsMarker, LV_ALIGN_CENTER, 0, 0);
 
   lv_obj_move_foreground(gpsMarker);
 }
